@@ -1,0 +1,11 @@
+{
+  "name": "my-mini-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx tsx src/index.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0"
+  }
+}
