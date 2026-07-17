@@ -9,26 +9,41 @@
 
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { checkApiKey } from "./ai.js";
+import { getApiKey, saveApiKey } from "./config.js";
 import { getToolDefinitions } from "./tools.js";
 import { getPrompt } from "./prompt-manager.js";
 import { Agent } from "./agent.js";
 
-// ===================== 启动检查 =====================
-
-checkApiKey();
-
-// ===================== 初始化 =====================
-
-// 从 prompts.json 读取系统提示词，不再硬编码
-const agent = new Agent(getPrompt("system"), getToolDefinitions());
-
 const rl = readline.createInterface({ input, output });
+
+// ===================== 首次运行引导 =====================
+
+async function setupApiKey(): Promise<void> {
+  const existingKey = getApiKey();
+  if (existingKey) return; // 已经有 key 了，跳过
+
+  console.log("[配置] 首次运行！需要配置 API Key 才能使用。");
+  console.log("（Key 会保存在项目目录的 .env 文件中，下次启动不再询问）\n");
+
+  const key = await rl.question("请输入你的 DeepSeek API Key: ");
+  if (!key.trim()) {
+    console.error("错误：API Key 不能为空");
+    process.exit(1);
+  }
+
+  saveApiKey(key.trim());
+  console.log("[完成] 已保存！开始使用吧\n");
+}
 
 // ===================== 主循环 =====================
 
 async function main() {
-  console.log("🤖 迷你 AI Agent (模块化重构版！输入 exit 退出)\n");
+  // 先配置 API Key，再启动 agent
+  await setupApiKey();
+
+  const agent = new Agent(getPrompt("system"), getToolDefinitions());
+
+  console.log("[Mini Agent] 输入 exit 退出\n");
 
   while (true) {
     const userInput = await rl.question("你 > ");
