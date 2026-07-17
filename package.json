@@ -1,5 +1,5 @@
 {
-  "name": "my-mini-agent",
+  "name": "mini-agent",
   "private": true,
   "type": "module",
   "scripts": {
