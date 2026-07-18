@@ -36,3 +36,73 @@ export type ToolDefinition = {
 
 /** 工具实现 —— 给程序用的函数签名 */
 export type ToolImplementation = (args: Record<string, any>) => string;
+
+// ===================== Session 管理类型 =====================
+
+/**
+ * 会话文件头 — JSONL 文件的第一行
+ * 记录会话的元信息：ID、创建时间、工作目录
+ */
+export type SessionHeader = {
+  type: "session";
+  version: number;
+  id: string;
+  timestamp: string;
+  cwd: string;
+  /** 从其他会话 fork 时，记录来源路径 */
+  parentSession?: string;
+};
+
+/**
+ * 会话树节点的基础字段
+ * 每个节点有唯一 id，parentId 指向父节点（构成树）
+ */
+export type SessionEntryBase = {
+  id: string;
+  /** null 表示根节点 */
+  parentId: string | null;
+  timestamp: string;
+};
+
+/**
+ * 消息节点 — 树中的一条对话消息
+ * 存的是原始 Message 对象，用户/AI/工具消息都走这个
+ */
+export type SessionMessageEntry = SessionEntryBase & {
+  type: "message";
+  message: Message;
+};
+
+/**
+ * 分支摘要节点 — 记录从哪分支、放弃了什么
+ * 当用户 branch 到历史节点时，插入一条摘要
+ * buildSessionContext 会把它转成 LLM 能理解的文本
+ */
+export type BranchSummaryEntry = SessionEntryBase & {
+  type: "branch_summary";
+  /** 从哪个节点开始分支的 */
+  fromId: string;
+  /** 对放弃路径的总结 */
+  summary: string;
+};
+
+/** 文件中任意一行的类型（header + 所有 entry 类型） */
+export type FileEntry = SessionHeader | SessionMessageEntry | BranchSummaryEntry;
+
+/** 会话树的所有节点类型（不含 header） */
+export type SessionEntry = SessionMessageEntry | BranchSummaryEntry;
+
+/**
+ * 会话树节点（用于展示树结构）
+ * entry: 当前节点
+ * children: 子节点列表
+ */
+export type SessionTreeNode = {
+  entry: SessionEntry;
+  children: SessionTreeNode[];
+};
+
+/** buildSessionContext 的返回结果 */
+export type SessionContext = {
+  messages: Message[];
+};
