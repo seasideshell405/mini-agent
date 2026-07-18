@@ -1,11 +1,11 @@
 /**
  * index.ts — 程序入口
  *
- * 职责只有一件事：读用户输入 → 交给 Agent → 打印回复
- *
- * 新增：SessionManager 初始化
- *   - 每次启动创建一个新会话（存到 ./sessions/ 目录）
- *   - 支持 /tree /branch /session 命令
+ * 支持命令：
+ *   /tree           — 查看会话树
+ *   /branch <id>    — 分支到历史节点
+ *   /branch <id> --summary — 分支并带 AI 生成的摘要
+ *   /session        — 显示会话信息
  */
 
 import * as readline from "node:readline/promises";
@@ -15,11 +15,10 @@ import { getToolDefinitions } from "./tools.js";
 import { getPrompt } from "./prompt-manager.js";
 import { Agent } from "./agent.js";
 import { SessionManager } from "./session-manager.js";
+import { summarizeMessages } from "./ai.js";
 import type { SessionTreeNode } from "./types.js";
 
 const rl = readline.createInterface({ input, output });
-
-// ===================== 首次运行引导 =====================
 
 async function setupApiKey(): Promise<void> {
   const existingKey = getApiKey();
@@ -38,12 +37,9 @@ async function setupApiKey(): Promise<void> {
   console.log("[完成] 已保存！开始使用吧\n");
 }
 
-// ===================== 主循环 =====================
-
 async function main() {
   await setupApiKey();
 
-  // 初始化会话管理器（树结构 + 文件持久化）
   const sessionDir = "./sessions";
   const sessionManager = new SessionManager(process.cwd(), sessionDir);
 
@@ -53,8 +49,9 @@ async function main() {
   const agent = new Agent(getPrompt("system"), getToolDefinitions(), sessionManager);
 
   console.log("[Mini Agent] 输入 exit 退出");
-  console.log("[Mini Agent] 输入 /tree 查看会话树");
-  console.log("[Mini Agent] 输入 /branch <节点id> 分支到历史消息\n");
+  console.log("[Mini Agent] /tree — 查看会话树");
+  console.log("[Mini Agent] /branch <id> — 分支");
+  console.log("[Mini Agent] /branch <id> --summary — 分支并自动生成摘要\n");
 
   while (true) {
     const userInput = await rl.question("你 > ");
@@ -63,13 +60,11 @@ async function main() {
       break;
     }
 
-    // 处理内部命令
     if (userInput.startsWith("/")) {
       await handleCommand(userInput, agent);
       continue;
     }
 
-    // 普通消息 → 交给 Agent
     console.log("AI > 思考中...");
     try {
       const reply = await agent.processMessage(userInput);
@@ -82,9 +77,6 @@ async function main() {
   rl.close();
 }
 
-/**
- * 处理内部命令
- */
 async function handleCommand(input: string, agent: Agent): Promise<void> {
   const parts = input.trim().split(/\s+/);
   const command = parts[0].toLowerCase();
@@ -93,7 +85,6 @@ async function handleCommand(input: string, agent: Agent): Promise<void> {
 
   switch (command) {
     case "/tree": {
-      // 打印会话树
       const tree = sm.getTree();
       if (tree.length === 0) {
         console.log("（空会话）\n");
@@ -104,14 +95,41 @@ async function handleCommand(input: string, agent: Agent): Promise<void> {
     }
 
     case "/branch": {
-      // 分支到指定节点
       if (args.length === 0) {
-        console.log("用法: /branch <节点id>\n");
+        console.log("用法: /branch <节点id> [--summary]\n");
         return;
       }
+
       const targetId = args[0];
+      const withSummary = args.includes("--summary");
+
       try {
-        sm.branch(targetId);
+        if (withSummary) {
+          // 获取被放弃的 entry
+          const abandoned = sm.getAbandonedEntries(targetId);
+          if (abandoned.length > 0) {
+            console.log("[摘要] 正在生成分支摘要...");
+
+            // 提取消息，过滤掉 tool 消息（对摘要无意义）
+            const msgs = abandoned
+              .filter(e => e.type === "message" && e.message.role !== "tool")
+              .map(e => e.message);
+
+            if (msgs.length > 0) {
+              const summary = await summarizeMessages(msgs);
+              sm.branchWithSummary(targetId, summary);
+              console.log(`[摘要] ${summary.slice(0, 60)}...\n`);
+            } else {
+              sm.branch(targetId);
+            }
+          } else {
+            console.log("[摘要] 没有找到需要摘要的路径，直接分支\n");
+            sm.branch(targetId);
+          }
+        } else {
+          sm.branch(targetId);
+        }
+
         console.log(`[分支] 已切换到节点 ${targetId}\n`);
       } catch (error: any) {
         console.log(`[错误] ${error.message}\n`);
@@ -120,7 +138,6 @@ async function handleCommand(input: string, agent: Agent): Promise<void> {
     }
 
     case "/session": {
-      // 显示会话信息
       console.log(`  ID:   ${sm.getSessionId()}`);
       console.log(`  文件: ${sm.getSessionFile()}`);
       console.log(`  节点: ${sm.getEntries().length} 个`);
@@ -134,10 +151,6 @@ async function handleCommand(input: string, agent: Agent): Promise<void> {
   }
 }
 
-/**
- * 递归打印会话树，标记当前 leaf 位置
- * 用缩进和连线表示树状结构
- */
 function printTree(nodes: SessionTreeNode[], leafId: string | null, indent = ""): void {
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
@@ -145,7 +158,6 @@ function printTree(nodes: SessionTreeNode[], leafId: string | null, indent = "")
     const connector = isLast ? "└─ " : "├─ ";
     const isLeaf = node.entry.id === leafId;
 
-    // 构造标签
     let label = "";
     if (node.entry.type === "message") {
       const msg = node.entry.message;
@@ -162,12 +174,10 @@ function printTree(nodes: SessionTreeNode[], leafId: string | null, indent = "")
       label = `[分支摘要] ${node.entry.summary.slice(0, 30)}...`;
     }
 
-    // 标记 leaf
     const leafMark = isLeaf ? " ← leaf" : "";
 
     console.log(`${indent}${connector}${node.entry.id} ${label}${leafMark}`);
 
-    // 递归子节点
     const childIndent = indent + (isLast ? "   " : "│  ");
     printTree(node.children, leafId, childIndent);
   }
