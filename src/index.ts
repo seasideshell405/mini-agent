@@ -6,6 +6,9 @@
  *   /branch <id>    — 分支到历史节点
  *   /branch <id> --summary — 分支并带 AI 生成的摘要
  *   /session        — 显示会话信息
+ *   /new            — 创建新会话
+ *   /resume <序号>  — 恢复历史会话
+ *   /exit           — 退出程序
  */
 
 import * as readline from "node:readline/promises";
@@ -17,6 +20,8 @@ import { Agent } from "./agent.js";
 import { SessionManager } from "./session-manager.js";
 import { summarizeMessages } from "./ai.js";
 import type { SessionTreeNode } from "./types.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const rl = readline.createInterface({ input, output });
 
@@ -46,22 +51,21 @@ async function main() {
   console.log(`[会话] ID: ${sessionManager.getSessionId()}`);
   console.log(`[会话] 文件: ${sessionManager.getSessionFile()}\n`);
 
-  const agent = new Agent(getPrompt("system"), getToolDefinitions(), sessionManager);
+  let agent = new Agent(getPrompt("system"), getToolDefinitions(), sessionManager);
 
-  console.log("[Mini Agent] 输入 exit 退出");
   console.log("[Mini Agent] /tree — 查看会话树");
   console.log("[Mini Agent] /branch <id> — 分支");
-  console.log("[Mini Agent] /branch <id> --summary — 分支并自动生成摘要\n");
+  console.log("[Mini Agent] /branch <id> --summary — 分支并自动生成摘要");
+  console.log("[Mini Agent] /new — 创建新会话");
+  console.log("[Mini Agent] /resume <序号> — 恢复历史会话");
+  console.log("[Mini Agent] /exit — 退出\n");
 
   while (true) {
     const userInput = await rl.question("你 > ");
-    if (userInput.trim().toLowerCase() === "exit") {
-      console.log("再见！");
-      break;
-    }
-
     if (userInput.startsWith("/")) {
-      await handleCommand(userInput, agent);
+      const result = await handleCommand(userInput, agent);
+      if (result.newAgent) agent = result.newAgent;
+      if (result.shouldExit) break;
       continue;
     }
 
@@ -77,7 +81,7 @@ async function main() {
   rl.close();
 }
 
-async function handleCommand(input: string, agent: Agent): Promise<void> {
+async function handleCommand(input: string, agent: Agent): Promise<{ shouldExit: boolean; newAgent?: Agent }> {
   const parts = input.trim().split(/\s+/);
   const command = parts[0].toLowerCase();
   const args = parts.slice(1);
@@ -88,7 +92,7 @@ async function handleCommand(input: string, agent: Agent): Promise<void> {
       const tree = sm.getTree();
       if (tree.length === 0) {
         console.log("（空会话）\n");
-        return;
+        return { shouldExit: false };
       }
       printTree(tree, sm.getLeafId());
       break;
@@ -97,7 +101,7 @@ async function handleCommand(input: string, agent: Agent): Promise<void> {
     case "/branch": {
       if (args.length === 0) {
         console.log("用法: /branch <节点id> [--summary]\n");
-        return;
+        return { shouldExit: false };
       }
 
       const targetId = args[0];
@@ -146,9 +150,75 @@ async function handleCommand(input: string, agent: Agent): Promise<void> {
       break;
     }
 
+    case "/new": {
+      const sm = new SessionManager(process.cwd(), "./sessions");
+      const newAgent = new Agent(getPrompt("system"), getToolDefinitions(), sm);
+      console.log(`[完成] 已切换到新会话 ${sm.getSessionId()}\n`);
+      return { shouldExit: false, newAgent };
+    }
+
+    case "/resume": {
+      const sessionDir = "./sessions";
+
+      // 列出所有 .jsonl 会话文件，按文件名倒序（最新的在前面）
+      let files: string[] = [];
+      try {
+        files = fs.readdirSync(sessionDir)
+          .filter(f => f.endsWith(".jsonl"))
+          .sort()
+          .reverse();
+      } catch {
+        console.log(`[错误] 无法读取会话目录: ${sessionDir}\n`);
+        return { shouldExit: false };
+      }
+
+      if (files.length === 0) {
+        console.log("[提示] 没有找到历史会话\n");
+        return { shouldExit: false };
+      }
+
+      // 无参 → 列出所有会话
+      if (args.length === 0) {
+        console.log("可用的历史会话：");
+        files.forEach((f, i) => {
+          // 文件名格式: 时间戳_会话ID.jsonl
+          // 例: 2026-07-18T18-52-38-703Z_6105f768-mrqq519r.jsonl
+          const ts = f.split("_")[0].replace(/-/g, ":").replace(/T/, " ").slice(0, 19);
+          const id = f.replace(".jsonl", "").split("_").slice(1).join("_");
+          console.log(`  [${i}] ${ts}  ${id}`);
+        });
+        console.log("用法: /resume <序号>\n");
+        return { shouldExit: false };
+      }
+
+      // 有参 → 按序号加载
+      const index = parseInt(args[0], 10);
+      if (isNaN(index) || index < 0 || index >= files.length) {
+        console.log(`[错误] 无效序号: ${args[0]}，可用范围 0-${files.length - 1}\n`);
+        return { shouldExit: false };
+      }
+
+      const filePath = path.resolve(sessionDir, files[index]);
+      const sm = SessionManager.load(filePath);
+      if (!sm) {
+        console.log(`[错误] 无法加载会话: ${files[index]}\n`);
+        return { shouldExit: false };
+      }
+
+      const newAgent = new Agent(getPrompt("system"), getToolDefinitions(), sm);
+      console.log(`[完成] 已切换到历史会话 ${sm.getSessionId()}\n`);
+      return { shouldExit: false, newAgent };
+    }
+
+    case "/exit":
+      console.log("再见！");
+      return { shouldExit: true };
+
     default:
       console.log(`未知命令: ${command}\n`);
   }
+
+  return { shouldExit: false };
 }
 
 function printTree(nodes: SessionTreeNode[], leafId: string | null, indent = ""): void {

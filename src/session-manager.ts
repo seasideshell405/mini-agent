@@ -94,8 +94,11 @@ export class SessionManager {
     const header = fileEntries[0] as SessionHeader;
     if (header.type !== "session" || typeof header.id !== "string") return null;
 
+    // 用 Object.create 绕过构造函数（避免写新文件），直接构建实例
     const dir = path.dirname(filePath);
-    const sm = new SessionManager(header.cwd || "", dir);
+    const sm = Object.create(SessionManager.prototype) as SessionManager;
+    sm.cwd = header.cwd || "";
+    sm.sessionDir = dir;
     sm.sessionId = header.id;
     sm.sessionFile = filePath;
     sm.entries = [];
