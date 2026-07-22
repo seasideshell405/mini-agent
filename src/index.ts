@@ -10,7 +10,7 @@ import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { getApiKey, saveApiKey } from "./config.js";
 import { getToolDefinitions } from "./tools/index.js";
-import { getPrompt } from "./prompt-manager.js";
+import { getPrompt } from "./prompts/index.js";
 import { Agent } from "./agent.js";
 import { SessionManager } from "./session-manager.js";
 import { executeCommand, getCommandHelp } from "./commands/index.js";
