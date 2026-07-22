@@ -35,7 +35,7 @@
  */
 
 import { askAI } from "./ai.js";
-import { executeTool } from "./tools.js";
+import { executeTool } from "./tools/index.js";
 import { SessionManager } from "./session-manager.js";
 import type { Message, ToolDefinition } from "./types.js";
 
