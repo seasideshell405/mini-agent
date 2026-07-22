@@ -32,6 +32,11 @@ src/
 │   ├── exit.ts
 │   └── __template__.ts        模板
 │
+├── logger/              ← 日志系统（文件输出 + 按大小切割）
+│   ├── index.ts               导出 Logger 类和全局实例
+│   ├── types.ts               LogLevel 枚举、LoggerConfig 类型
+│   └── logger.ts              Logger 实现
+│
 ├── config.ts             → 配置管理（API Key）
 ├── types.ts              → 类型定义
 ├── ai.ts                 → AI 通信
@@ -72,6 +77,39 @@ npx tsx src/index.ts
 | `/resume <序号>` | 恢复指定历史会话 |
 | `/load` | 热加载工具和指令（增删文件后无需重启） |
 | `/exit` | 退出程序 |
+
+### 日志系统
+
+支持按文件大小自动切割的日志系统，记录所有幕后过程：
+
+- **文件输出**：所有技术细节（工具调用、API 请求、内部循环等）写入 `logs/` 目录
+- **命名格式**：`2026-07-22T06-30-21Z.log`（ISO 8601 UTC 标准）
+- **自动切割**：单个文件超过 5MB 时自动新建文件
+- **级别过滤**：DEBUG < INFO < WARN < ERROR，低于最低级别的日志不输出
+- **终端分离**：用户直接看到的内容走 `console.log`，技术细节走 `logger.*`，互不干扰
+
+```bash
+# 日志文件示例：logs/2026-07-22T06-30-21Z.log
+[2026-07-22T06:30:21.001Z] [INFO] [system] 会话 ID: abc123
+[2026-07-22T06:30:21.123Z] [DEBUG] [agent] 构建上下文，共 3 条消息
+[2026-07-22T06:30:22.456Z] [INFO] [agent] AI 请求调用工具: get_weather
+```
+
+| 位置 | 终端 | 日志文件 |
+|------|------|----------|
+| 用户输入 / AI 回复 | ✅ 显示 | ✅ 记录 |
+| 会话信息 / 程序状态 | ✅ 显示 | ✅ 记录 |
+| 错误信息 | ✅ 显示 | ✅ 记录 |
+| 工具调用 / API 详情 | ❌ 不显示 | ✅ 记录 |
+
+结构：
+
+```
+src/logger/
+├── index.ts    ← 导出 Logger 类和全局实例
+├── types.ts    ← LogLevel 枚举、LoggerConfig 类型
+└── logger.ts   ← Logger 实现（文件输出 + 按大小切割）
+```
 
 ### 会话系统
 

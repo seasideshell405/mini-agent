@@ -16,6 +16,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
+import { logger } from "./logger/index.js";
 import type {
   Message,
   SessionHeader,
@@ -82,6 +83,9 @@ export class SessionManager {
     };
 
     fs.writeFileSync(this.sessionFile, JSON.stringify(header) + "\n", "utf-8");
+
+    logger.info("session", `新会话创建: ${this.sessionId}`);
+    logger.debug("session", `会话文件: ${this.sessionFile}`);
   }
 
   static load(filePath: string): SessionManager | null {
@@ -113,6 +117,7 @@ export class SessionManager {
       }
     }
 
+    logger.info("session", `会话已加载: ${sm.sessionId}（${sm.entries.length} 条记录）`);
     return sm;
   }
 
@@ -132,6 +137,13 @@ export class SessionManager {
     this.leafId = entry.id;
 
     fs.appendFileSync(this.sessionFile, JSON.stringify(entry) + "\n", "utf-8");
+
+    // 日志里只记角色摘要，不记完整内容（内容可能很长）
+    const rolePreview = message.role;
+    const contentPreview = message.content
+      ? message.content.slice(0, 60) + (message.content.length > 60 ? "..." : "")
+      : "(null)";
+    logger.debug("session", `追加消息 [${entry.id}]: role=${rolePreview}, content="${contentPreview}"`);
 
     return entry.id;
   }
@@ -166,19 +178,22 @@ export class SessionManager {
    */
   branch(entryId: string): void {
     if (!this.byId.has(entryId)) {
-      throw new Error(`找不到节点: ${entryId}`);
+      const err = `找不到节点: ${entryId}`;
+      logger.error("session", `分支失败: ${err}`);
+      throw new Error(err);
     }
 
     const entry = this.byId.get(entryId)!;
 
     // 不允许 branch 到有 tool_calls 的 assistant 消息
     if (entry.type === "message" && entry.message.role === "assistant" && entry.message.tool_calls) {
-      throw new Error(
-        `不能分支到有工具调用的 AI 消息，请分支到它的父节点 ${entry.parentId || "（根节点）"}`,
-      );
+      const err = `不能分支到有工具调用的 AI 消息，请分支到它的父节点 ${entry.parentId || "（根节点）"}`;
+      logger.warn("session", `分支被拒绝: ${err}`);
+      throw new Error(err);
     }
 
     this.leafId = entryId;
+    logger.info("session", `分支到节点 ${entryId}`);
   }
 
   /**
@@ -186,6 +201,7 @@ export class SessionManager {
    */
   branchWithSummary(entryId: string, summary: string): string {
     this.branch(entryId);
+    logger.info("session", `分支并生成摘要，放弃的路径已被总结`);
     return this.appendBranchSummary(entryId, summary);
   }
 
@@ -318,6 +334,7 @@ export class SessionManager {
       }
     }
 
+    logger.debug("session", `构建上下文完成: ${path.length} 个节点 → ${messages.length} 条消息`);
     return { messages };
   }
 }

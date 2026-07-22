@@ -37,6 +37,7 @@
 import { askAI } from "./ai.js";
 import { executeTool } from "./tools/index.js";
 import { SessionManager } from "./session-manager.js";
+import { logger } from "./logger/index.js";
 import type { Message, ToolDefinition } from "./types.js";
 
 /**
@@ -82,11 +83,13 @@ export class Agent {
   async processMessage(userInput: string): Promise<string> {
     // 1. 把用户消息存入会话树
     this.sessionManager.appendMessage({ role: "user", content: userInput });
+    logger.debug("agent", "用户消息已存入会话树");
 
     // 2. inner loop：反复问 AI 直到它直接回复文字
     while (true) {
       // 3. 从会话树构建上下文（不含 system prompt）
       const { messages } = this.sessionManager.buildSessionContext();
+      logger.debug("agent", `构建上下文，共 ${messages.length} 条消息`);
 
       // 4. 拼接 system prompt，调 AI
       const fullMessages: Message[] = [
@@ -98,6 +101,9 @@ export class Agent {
 
       // 情况 A：AI 要调用工具
       if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
+        const toolNames = aiMessage.tool_calls.map(t => t.function.name).join(", ");
+        logger.info("agent", `AI 请求调用工具: ${toolNames}`);
+
         // 把 AI 的"工具调用意图"存入会话树
         this.sessionManager.appendMessage({
           role: "assistant",
@@ -109,9 +115,11 @@ export class Agent {
         for (const toolCall of aiMessage.tool_calls) {
           const toolName = toolCall.function.name;
           const toolArgs = JSON.parse(toolCall.function.arguments);
+          logger.info("agent", `执行工具: ${toolName}`, toolArgs);
 
           // 执行工具
           const result = executeTool(toolName, toolArgs);
+          logger.info("agent", `工具 ${toolName} 返回: ${result}`);
 
           // 把工具结果存入会话树
           this.sessionManager.appendMessage({
@@ -128,11 +136,13 @@ export class Agent {
 
       // 情况 B：AI 直接回复文字 → inner loop 结束
       if (aiMessage.content) {
+        logger.info("agent", "AI 回复用户，inner loop 结束");
         this.sessionManager.appendMessage({ role: "assistant", content: aiMessage.content });
         return aiMessage.content;
       }
 
       // 情况 C：既没有 tool_calls 也没有 content（极端情况）
+      logger.warn("agent", "AI 返回了空回复（无 content 也无 tool_calls）");
       return "（AI 返回了空回复）";
     }
   }
