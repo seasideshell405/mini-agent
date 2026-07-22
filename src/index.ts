@@ -15,7 +15,6 @@ import { Agent } from "./agent.js";
 import { SessionManager } from "./session-manager.js";
 import { executeCommand, getCommandHelp, reloadCommands } from "./commands/index.js";
 import { reloadTools } from "./tools/index.js";
-import { reloadPrompts } from "./prompts/index.js";
 import { summarizeMessages } from "./ai.js";
 
 const rl = readline.createInterface({ input, output });
@@ -67,7 +66,6 @@ async function main() {
         summarizeMessages,
         reloadTools,
         reloadCommands,
-        reloadPrompts,
         sessionDir,
       });
       if (result.newAgent) agent = result.newAgent;

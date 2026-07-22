@@ -1,8 +1,10 @@
-在这里写你的提示词内容。
+创建这个文件会覆盖代码里写死的默认提示词。
 
-文件名就是 key，比如创建 `system.md`，代码里 `getPrompt("system")` 就能读到。
+规则：
+- 文件名去掉 .md 就是 key，如 system.md → getPrompt("system")
+- 有文件 → 读文件内容
+- 没文件 → 用 DEFAULTS 里的默认值
+- 修改文件即时生效，不需要重启或 /load
+- 删除文件 = 恢复默认值
 
-注意事项：
-- 文件名不要用 __ 开头（会被 index.ts 跳过）
-- 文件用 .md 后缀，内容纯文本即可
-- 多行内容直接换行写
+默认值定义在 src/prompts/index.ts 的 DEFAULTS 里。

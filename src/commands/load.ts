@@ -12,11 +12,13 @@
  * ⚠️ 注意：reload 函数通过 context 传入，而不是直接 import
  *   因为 /load 自己也是个指令，直接在模块顶层 import 会导致
  *   循环依赖。
+ *
+ *   提示词不需要 reload：getPrompt() 每次调用都会读文件，修改 .md 即时生效
  */
 
 export const commandDefinition = {
   name: "/load",
-  description: "热加载提示词、工具和指令（增删文件后无需重启）",
+  description: "热加载工具和指令（增删文件后无需重启）",
   usage: "/load",
 };
 
@@ -25,13 +27,11 @@ export async function execute(
   context: {
     reloadTools: () => Promise<void>;
     reloadCommands: () => Promise<void>;
-    reloadPrompts: () => void;
   }
 ): Promise<{ shouldExit: boolean; newAgent?: any }> {
   console.log("--- 热加载开始 ---\n");
 
-  // 按依赖顺序：提示词 → 工具 → 指令
-  context.reloadPrompts();
+  // 提示词每次读文件即时生效，不需要 reload
   await context.reloadTools();
   await context.reloadCommands();
 

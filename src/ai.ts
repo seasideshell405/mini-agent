@@ -9,6 +9,7 @@
 
 import type { Message, ToolDefinition } from "./types.js";
 import { getApiKey } from "./config.js";
+import { getPrompt } from "./prompts/index.js";
 
 /** DeepSeek API 地址（OpenAI 兼容格式） */
 const API_URL = "https://api.deepseek.com/v1/chat/completions";
@@ -88,8 +89,7 @@ export async function summarizeMessages(
         {
           role: "system",
           content:
-            systemPrompt ||
-            "请用中文将以下对话总结成一段简短的摘要，保留关键信息和上下文。只返回摘要内容，不要加额外说明。",
+            systemPrompt || getPrompt("compaction"),
         },
         ...messages,
       ],
