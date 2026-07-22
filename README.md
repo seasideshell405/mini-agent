@@ -8,15 +8,38 @@
 
 ```
 src/
-├── config.ts           → 配置管理（API Key）
-├── types.ts            → 类型定义
-├── ai.ts               → AI 通信
-├── tools.ts            → 工具系统
-├── prompt-manager.ts   → 提示词管理
-├── session-manager.ts  → 会话管理（树结构 + 文件持久化）
-├── agent.ts            → 智能体核心（inner loop）
-└── index.ts            → 入口（CLI + 命令处理）
+├── prompts/              ← 提示词（每个 .md 文件一个提示词）
+│   ├── index.ts               自动发现加载器
+│   ├── system.md
+│   ├── compaction.md
+│   └── __template__.md        模板
+│
+├── tools/                ← AI 工具（每个 .ts 文件一个工具）
+│   ├── index.ts               自动发现加载器
+│   ├── eval.ts
+│   ├── read_file.ts
+│   ├── write_file.ts
+│   └── __template__.ts        模板
+│
+├── commands/             ← /指令（每个 .ts 文件一个指令）
+│   ├── index.ts               自动发现加载器
+│   ├── tree.ts
+│   ├── branch.ts
+│   ├── session.ts
+│   ├── new.ts
+│   ├── resume.ts
+│   ├── exit.ts
+│   └── __template__.ts        模板
+│
+├── config.ts             → 配置管理（API Key）
+├── types.ts              → 类型定义
+├── ai.ts                 → AI 通信
+├── session-manager.ts    → 会话管理（树结构 + 文件持久化）
+├── agent.ts              → 智能体核心（inner loop）
+└── index.ts              → 入口（纯入口，不含业务逻辑）
 ```
+
+**增删文件 = 增删功能：** 三个子系统（prompts/ / tools/ / commands/）都使用同一套自动发现模式。加功能就新建文件，删功能就删文件，不用改代码。
 
 ### 使用
 
@@ -29,7 +52,7 @@ npx tsx src/index.ts
 
 ### 命令
 
-所有命令都以 `/` 开头：
+所有命令都以 `/` 开头，启动时会自动列出所有已加载的指令：
 
 | 命令 | 说明 |
 |---|---|
