@@ -20,22 +20,21 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** 提示词缓存：key = 文件名（不含扩展名），value = 文件内容 */
-const prompts = new Map<string, string>();
+let prompts = new Map<string, string>();
 
 /**
  * 扫描 prompts/ 目录，读取所有 .md 文件
  */
 function init() {
+  prompts = new Map();
+
   const files = fs.readdirSync(__dirname);
 
   for (const file of files) {
-    // 只处理 .md 文件
     if (!file.endsWith(".md")) continue;
-    // 跳过 __ 开头的文件（模板）
     if (file.startsWith("__")) continue;
 
     try {
-      // 文件名去掉 .md 就是 key
       const key = file.slice(0, -3);
       const content = fs.readFileSync(path.join(__dirname, file), "utf-8");
       prompts.set(key, content);
@@ -48,6 +47,15 @@ function init() {
 
 // 同步初始化，模块加载时自动扫描
 init();
+
+/**
+ * 热加载 —— 重新扫描 prompts/ 目录并重新读取所有 .md 文件
+ */
+export function reloadPrompts(): void {
+  console.log("[提示词] 重新加载中...");
+  init();
+  console.log("[提示词] 重新加载完成\n");
+}
 
 /**
  * 根据 key 获取对应的提示词

@@ -26,12 +26,16 @@ type CommandModule = {
 };
 
 /** 按指令名（如 "/tree"）存储加载好的模块 */
-const commands = new Map<string, CommandModule>();
+let commands = new Map<string, CommandModule>();
 
 /**
  * 扫描 commands/ 目录，动态加载所有指令文件
+ *
+ * @param bustCache - 是否跳过模块缓存（用于热加载时的重新 import）
  */
-async function init() {
+async function init(bustCache = false) {
+  commands = new Map();
+
   const files = fs.readdirSync(__dirname);
 
   for (const file of files) {
@@ -40,7 +44,8 @@ async function init() {
     if (file.startsWith("__")) continue;
 
     try {
-      const mod = await import(`./${file}`) as CommandModule;
+      const cacheBuster = bustCache ? `?t=${Date.now()}` : "";
+      const mod = await import(`./${file}${cacheBuster}`) as CommandModule;
 
       if (mod.commandDefinition && mod.execute) {
         const name = mod.commandDefinition.name;
@@ -54,6 +59,15 @@ async function init() {
 }
 
 await init();
+
+/**
+ * 热加载 —— 重新扫描 commands/ 目录并重新 import 所有指令
+ */
+export async function reloadCommands(): Promise<void> {
+  console.log("[指令] 重新加载中...");
+  await init(true);
+  console.log("[指令] 重新加载完成\n");
+}
 
 /**
  * 执行指定名称的指令
