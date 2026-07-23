@@ -10,7 +10,7 @@ import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { getApiKey, saveApiKey } from "./config.js";
 import { getToolDefinitions } from "./tools/index.js";
-import { getPrompt } from "./prompts/index.js";
+import { getPrompt, buildSystemPrompt } from "./prompts/index.js";
 import { Agent } from "./agent.js";
 import { SessionManager } from "./session-manager.js";
 import { executeCommand, getCommandHelp, reloadCommands } from "./commands/index.js";
@@ -51,7 +51,7 @@ async function main() {
   logger.info("system", `会话 ID: ${sessionManager.getSessionId()}`);
   logger.info("system", `会话文件: ${sessionManager.getSessionFile()}`);
 
-  let agent = new Agent(getPrompt("system"), getToolDefinitions(), sessionManager);
+  let agent = new Agent(buildSystemPrompt("default"), getToolDefinitions(), sessionManager);
 
   // 启动时动态打印所有可用的指令——这些是给用户看的操作指引，留在控制台不打日志
   console.log("可用指令：");
@@ -68,6 +68,7 @@ async function main() {
       const result = await executeCommand(userInput, {
         agent,
         getPrompt,
+        buildSystemPrompt,
         getToolDefinitions,
         summarizeMessages,
         reloadTools,

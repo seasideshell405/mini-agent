@@ -75,6 +75,19 @@ export class Agent {
   }
 
   /**
+   * 切换人格（替换 system prompt）
+   *
+   * 和构造时设置不同，这个方法只替换人格部分（persona + rules），
+   * 不影响 Agent 的其他状态（工具、会话树）。
+   *
+   * @param prompt - 新的人格提示词
+   */
+  setSystemPrompt(prompt: string): void {
+    this.systemPrompt = prompt;
+    logger.info("agent", `人格已切换，新 system prompt 长度: ${prompt.length} 字`);
+  }
+
+  /**
    * 处理一条用户输入
    *
    * @param userInput - 用户输入的文字

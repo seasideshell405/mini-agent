@@ -1,12 +1,13 @@
 /**
  * prompts/index.ts — 提示词管理器
  *
- * 规则：有文件读文件，没文件用代码里的默认值。
- *   - 有 prompts/system.md     → getPrompt("system") 返回文件内容
- *   - 没有 prompts/system.md   → 返回下方 hardcode 的默认值
+ * 管理三类内容：
+ *   - prompts/ 根目录：system.md 已被移除，保留 compaction.md 供分支摘要用
+ *   - prompts/rules.md：行为规范（所有人格共享）
+ *   - prompts/persona/：人格文件（每个 .md 一个角色）
  *
- * 这样你不需要为每个提示词都建文件，只有想覆盖默认值时才创建。
- * 删除文件 = 恢复默认值。
+ * 核心逻辑：getPrompt() 读 prompts/ 根目录的文件，遵循旧规则；
+ * buildSystemPrompt() 组合人格 + 规则，生成最终的 system prompt。
  */
 
 import fs from "node:fs";
@@ -16,23 +17,19 @@ import { fileURLToPath } from "node:url";
 /** 拿到当前文件所在目录的绝对路径 */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/** 人格文件目录 */
+const PERSONA_DIR = path.join(__dirname, "persona");
+
 /**
- * 硬编码的默认提示词 — 当对应 .md 文件不存在时用这些
- *
- * 新增提示词在这里加一行即可，可选地再建一个 .md 文件覆盖它
+ * 硬编码的默认值 — 当对应 .md 文件不存在时用这些
  */
 const DEFAULTS: Record<string, string> = {
-  system:
-    "你是一个智能助手，运行在 my-mini-agent 框架中。\n\n" +
-    "你有以下工具可用：\n" +
-    "规则：\n" +
-    "- 回复要简洁\n" +
-    "- 操作文件时显示完整路径\n" +
-    "- 当用户要求你做多个事情时，逐步完成，不要一次性跳过",
-
   compaction:
-    "请用中文将以下对话总结成一段简短的摘要，保留关键信息和上下文。只返回摘要内容，不要加额外说明。",
+    "请用中文将以下对话总结成一段简短的摘要，保留关键信息和上下文。" +
+    "只返回摘要内容，不要加额外说明。",
 };
+
+// ===================== 原有：读取 prompts/根目录 的文件 =====================
 
 /**
  * 根据 key 获取对应的提示词
@@ -42,15 +39,12 @@ const DEFAULTS: Record<string, string> = {
  *   2. 没有文件 → 返回 DEFAULTS 里的默认值
  *   3. 都没有 → 抛异常
  *
- * 每次调用都会读文件，所以修改 .md 文件即时生效，不需要重启或 /load。
- *
- * @param key - 提示词名称，如 "system"
+ * @param key - 提示词名称，如 "compaction"
  * @returns 提示词文本
  */
 export function getPrompt(key: string): string {
   const filePath = path.join(__dirname, `${key}.md`);
 
-  // 优先读文件
   if (fs.existsSync(filePath)) {
     try {
       return fs.readFileSync(filePath, "utf-8");
@@ -59,7 +53,6 @@ export function getPrompt(key: string): string {
     }
   }
 
-  // 没有文件 → 用硬编码默认值
   const fallback = DEFAULTS[key];
   if (fallback !== undefined) {
     return fallback;
@@ -69,4 +62,64 @@ export function getPrompt(key: string): string {
     `未找到提示词: "${key}"，请在 src/prompts/ 下创建 ${key}.md 文件，` +
     `或在 DEFAULTS 中添加默认值`,
   );
+}
+
+// ===================== 新增：人格 + 规则拼装 =====================
+
+/**
+ * 读取人格文件内容
+ *
+ * @param key - 人格名称（对应 prompts/persona/{key}.md）
+ * @returns 人格文本
+ */
+export function getPersona(key: string): string {
+  const filePath = path.join(PERSONA_DIR, `${key}.md`);
+
+  if (!fs.existsSync(filePath)) {
+    throw new Error(
+      `未找到人格: "${key}"，请在 src/prompts/persona/ 下创建 ${key}.md 文件`,
+    );
+  }
+
+  return fs.readFileSync(filePath, "utf-8");
+}
+
+/**
+ * 读取行为规范文件（prompts/rules.md）
+ * 如果文件不存在，返回一组合理的默认规则
+ *
+ * @returns 规则文本
+ */
+export function getRules(): string {
+  const filePath = path.join(__dirname, "rules.md");
+
+  if (fs.existsSync(filePath)) {
+    return fs.readFileSync(filePath, "utf-8");
+  }
+
+  // 文件不存在时返回默认规则
+  return [
+    "规则：",
+    "- 回复要简洁",
+    "- 操作文件时显示完整路径",
+    "- 当用户要求你做多个事情时，逐步完成，不要一次性跳过",
+  ].join("\n");
+}
+
+/**
+ * 构建完整的 system prompt
+ *
+ * 人格 + 规则，两部分之间用空行分隔。
+ * 如果人格内容末尾没有空行，自动补一个。
+ *
+ * @param personaKey - 人格名称（"default" 或其他）
+ * @returns 拼装好的完整 system prompt
+ */
+export function buildSystemPrompt(personaKey: string): string {
+  const persona = getPersona(personaKey);
+  const rules = getRules();
+
+  // 人格内容末尾加一个空行，再拼规则
+  const trimmedPersona = persona.endsWith("\n") ? persona : persona + "\n";
+  return `${trimmedPersona}\n${rules}`;
 }
