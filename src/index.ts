@@ -16,9 +16,20 @@ import { SessionManager } from "./session-manager.js";
 import { executeCommand, getCommandHelp, reloadCommands } from "./commands/index.js";
 import { reloadTools } from "./tools/index.js";
 import { summarizeMessages } from "./ai.js";
+import { Scheduler } from "./scheduler/index.js";
 import { logger } from "./logger/index.js";
 
 const rl = readline.createInterface({ input, output });
+
+// ===== 中止机制：监听 Escape 键 =====
+// readline.createInterface 在 TTY 模式下会自动设置 raw mode 和 keypress 事件，
+// 我们只需要额外监听 Escape 键，调用 agent.abort() 即可。
+let currentAgent: Agent | null = null;
+process.stdin.on("keypress", (_str, key) => {
+  if (key?.name === "escape" && currentAgent) {
+    currentAgent.abort();
+  }
+});
 
 async function setupApiKey(): Promise<void> {
   const existingKey = getApiKey();
@@ -57,6 +68,25 @@ async function main() {
   logger.info("system", `当前人格: ${savedPersona}`);
 
   let agent = new Agent(buildSystemPrompt(savedPersona), getToolDefinitions(), sessionManager);
+  currentAgent = agent;
+
+  // ===== 启动定时任务调度器 =====
+  // 调度器在后台每 60 秒检查一次，执行到期的定时任务
+  const scheduler = new Scheduler();
+  scheduler.onTaskMessage = (taskName, message) => {
+    // 把任务消息作为 system 角色注入 session，成为 AI 上下文的一部分
+    // 下次用户输入时，AI 会看到这条消息
+    sessionManager.appendMessage({
+      role: "system",
+      content: `[定时任务: ${taskName}] ${message}`,
+    });
+    // 同时在控制台打印通知，让用户知道
+    console.log(`\n[定时任务] ${taskName}: ${message}\n`);
+  };
+  scheduler.start();
+
+  // 程序退出时停止调度器
+  process.on("exit", () => scheduler.stop());
 
   // 启动时动态打印所有可用的指令——这些是给用户看的操作指引，留在控制台不打日志
   console.log("可用指令：");
@@ -81,7 +111,10 @@ async function main() {
         reloadCommands,
         sessionDir,
       });
-      if (result.newAgent) agent = result.newAgent;
+      if (result.newAgent) {
+        agent = result.newAgent;
+        currentAgent = agent;
+      }
       if (result.shouldExit) break;
       continue;
     }
@@ -99,6 +132,9 @@ async function main() {
       console.error("错误:", error);
     }
   }
+
+  // 停止调度器
+  scheduler.stop();
 
   // 退出前检查：如果用户啥都没说（没有消息记录），删掉这个空会话
   if (sessionManager.isEmpty()) {

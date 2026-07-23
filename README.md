@@ -37,6 +37,15 @@ src/
 │   ├── types.ts               LogLevel 枚举、LoggerConfig 类型
 │   └── logger.ts              Logger 实现
 │
+├── scheduler/            ← 定时任务系统（自动发现 + 每分钟 tick）
+│   ├── index.ts               统一导出
+│   ├── types.ts               任务类型定义
+│   ├── loader.ts              自发现加载器
+│   └── scheduler.ts           调度引擎
+│
+├── tasks/                ← 定时任务存放处（每个 .ts 文件一个任务）
+│   └── __template__.ts        模板
+│
 ├── config.ts             → 配置管理（API Key）
 ├── types.ts              → 类型定义
 ├── ai.ts                 → AI 通信
@@ -45,13 +54,14 @@ src/
 └── index.ts              → 入口（纯入口，不含业务逻辑）
 ```
 
-三个子系统三种管理方式：
+四个子系统四种管理方式：
 
 | 目录 | 管理方式 | 增删文件 |
 |---|---|---|
 | `prompts/` | 有 `.md` 文件 → 覆盖默认值；没有 → 用硬编码默认值 | 建文件覆盖，删文件恢复默认 |
 | `tools/` | 自动发现所有 `.ts` 文件 | 建文件加工具，删文件去工具，然后 `/load` |
 | `commands/` | 自动发现所有 `.ts` 文件 | 建文件加指令，删文件去指令，然后 `/load` |
+| `tasks/` | 自动发现所有 `.ts` 文件 | 建文件加任务，删文件去任务，重启生效 |
 
 ### 使用
 
@@ -110,6 +120,32 @@ src/logger/
 ├── types.ts    ← LogLevel 枚举、LoggerConfig 类型
 └── logger.ts   ← Logger 实现（文件输出 + 按大小切割）
 ```
+
+### 定时任务系统
+
+支持在后台每分钟检查并执行定时任务。每个任务一个 `.ts` 文件，自动发现加载。
+
+#### 两种任务模式
+
+| 模式 | 做法 | 适用场景 |
+|---|---|---|
+| **直接执行** | execute 函数不 return / return void | 清理日志、文件操作、调外部 API 等不需要 AI 参与的事 |
+| **注入会话** | execute 返回 string | 消息会以 `system` 角色追加到当前 session，下次用户输入时 AI 会看到并处理 |
+
+#### 调度表达式
+
+| 格式 | 例子 | 含义 |
+|---|---|---|
+| `"every N"` | `"every 30"` | 每 N 分钟执行一次 |
+| `"M H * * *"` | `"0 9 * * *"` | 每天本地时间 09:00 执行 |
+| `"* * * * *"` | — | 每分钟执行（测试用） |
+
+> 展示给用户的时间用系统本地时间，数据记录（`context.now`、`lastRunMinute`）用 UTC 无歧义。
+
+#### 使用
+
+新建任务：复制 `tasks/__template__.ts` → 改 `name`、`schedule`、`execute` → 重启或 `/load`。
+删除任务：直接删文件，下次 tick 自动忽略。
 
 ### 会话系统
 
