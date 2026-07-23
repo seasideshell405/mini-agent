@@ -56,6 +56,12 @@ export class Agent {
   /** 会话管理器（树结构 + 文件持久化） */
   private sessionManager: SessionManager;
 
+  /**~~~ 中止机制 ~~~ */
+  /** 中止标志：设为 true 时 inner loop 在下一轮循环开始处退出 */
+  private aborted = false;
+  /** 用于取消当前正在发送的 AI 请求 */
+  private abortController = new AbortController();
+
   /**
    * @param systemPrompt - 系统提示词
    * @param tools - 工具定义列表
@@ -72,6 +78,20 @@ export class Agent {
    */
   getSessionManager(): SessionManager {
     return this.sessionManager;
+  }
+
+  /**
+   * 中止当前对话
+   *
+   * 调用后，inner loop 会在合适的时机退出：
+   *   - 如果正在等 AI 回复 → 取消 HTTP 请求
+   *   - 如果正在执行工具 → 等工具跑完再退出
+   *
+   * 这是给上层（TUI、快捷键等）调用的公开方法。
+   */
+  abort(): void {
+    this.aborted = true;
+    this.abortController.abort();
   }
 
   /**
@@ -100,17 +120,39 @@ export class Agent {
 
     // 2. inner loop：反复问 AI 直到它直接回复文字
     while (true) {
+      // 2a. 每次循环开始前检查中止标志
+      if (this.aborted) {
+        this.aborted = false;
+        this.abortController = new AbortController();
+        logger.info("agent", "用户中止了本次对话");
+        return "（已中止）";
+      }
+
       // 3. 从会话树构建上下文（不含 system prompt）
       const { messages } = this.sessionManager.buildSessionContext();
       logger.debug("agent", `构建上下文，共 ${messages.length} 条消息`);
 
-      // 4. 拼接 system prompt，调 AI
+      // 4. 拼接 system prompt，调 AI（传入 signal 以便取消正在发的请求）
       const fullMessages: Message[] = [
         { role: "system", content: this.systemPrompt },
         ...messages,
       ];
 
-      const aiMessage = await askAI(fullMessages, this.tools);
+      let aiMessage: Message;
+      try {
+        aiMessage = await askAI(fullMessages, this.tools, this.abortController.signal);
+      } catch (err) {
+        // 如果 abort 导致 fetch 抛 AbortError，属于正常中止，不是真的出错
+        if (this.aborted) {
+          this.aborted = false;
+          this.abortController = new AbortController();
+          logger.info("agent", "用户中止了本次对话（AI 请求正在发送中）");
+          return "（已中止）";
+        }
+        // 其他错误照常抛出
+        throw err;
+      }
+
 
       // 情况 A：AI 要调用工具
       if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {

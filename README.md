@@ -9,9 +9,13 @@
 ```
 src/
 ├── prompts/              ← 提示词（每个 .md 文件可覆盖一个提示词）
-│   ├── index.ts               有文件读文件，没有用硬编码默认值
-│   ├── system.md              覆盖 system 提示词
-│   ├── compaction.md          覆盖分支摘要提示词
+│   ├── index.ts               提示词管理器（人格 + 规则 + 分支摘要）
+│   ├── rules.md               行为规范（所有人格共享）
+│   ├── compaction.md          分支摘要提示词
+│   ├── persona/               人格文件（每个 .md 一个角色）
+│   │   ├── default.md
+│   │   ├── poet.md
+│   │   └── teacher.md
 │   └── __template__.md        模板
 │
 ├── tools/                ← AI 工具（每个 .ts 文件一个工具）

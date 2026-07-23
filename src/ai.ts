@@ -25,6 +25,7 @@ const API_URL = "https://api.deepseek.com/v1/chat/completions";
 export async function askAI(
   messages: Message[],
   tools: ToolDefinition[],
+  signal?: AbortSignal,
 ): Promise<Message> {
   const apiKey = getApiKey();
   if (!apiKey) {
@@ -47,6 +48,7 @@ export async function askAI(
       tools,
       tool_choice: "auto",
     }),
+    signal,  // 传 AbortSignal，上层可以取消这个请求
   });
 
   const data = await response.json();
