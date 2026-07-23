@@ -46,6 +46,7 @@ export async function execute(
   context: {
     agent: { setSystemPrompt: (prompt: string) => void };
     buildSystemPrompt: (key: string) => string;
+    saveActivePersona: (persona: string) => void;
   },
 ): Promise<{ shouldExit: boolean; newAgent?: any }> {
   // 没有参数 → 列出可用人格
@@ -71,7 +72,11 @@ export async function execute(
     // buildSystemPrompt 负责读人格文件 + 规则文件并拼装
     const fullPrompt = context.buildSystemPrompt(personaName);
     context.agent.setSystemPrompt(fullPrompt);
-    console.log(`✅ 已切换人格为: ${personaName}`);
+
+    // 持久化到 .env，下次启动恢复同一个人格
+    context.saveActivePersona(personaName);
+    const label = personaName === "default" ? "默认人格" : `人格「${personaName}」`;
+    console.log(`✅ 已切换为${label}（重启后保持）`);
   } catch {
     console.log(`❌ 未找到人格 "${personaName}"`);
     console.log("可用人格列表：");
