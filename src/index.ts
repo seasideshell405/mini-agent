@@ -93,6 +93,13 @@ async function main() {
     }
   }
 
+  // 退出前检查：如果用户啥都没说（没有消息记录），删掉这个空会话
+  if (sessionManager.isEmpty()) {
+    sessionManager.deleteSessionFile();
+  } else {
+    logger.info("system", `会话已保存: ${sessionManager.getSessionFile()}`);
+  }
+
   rl.close();
 }
 

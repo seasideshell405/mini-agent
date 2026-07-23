@@ -231,6 +231,33 @@ export class SessionManager {
     return this.sessionFile;
   }
 
+  // ===================== 清理 =====================
+
+  /**
+   * 判断会话是否为空（没有任何消息记录，只有 header）
+   *
+   * 用于退出时判断：如果用户啥都没说，就不留会话文件
+   */
+  isEmpty(): boolean {
+    return this.entries.length === 0;
+  }
+
+  /**
+   * 删除会话文件
+   *
+   * 注意：这只是清理磁盘上的文件，不影响内存中的对象
+   */
+  deleteSessionFile(): void {
+    try {
+      if (fs.existsSync(this.sessionFile)) {
+        fs.unlinkSync(this.sessionFile);
+        logger.info("session", `空会话文件已删除: ${this.sessionId}`);
+      }
+    } catch (err) {
+      logger.error("session", `删除会话文件失败: ${err}`);
+    }
+  }
+
   getSessionId(): string {
     return this.sessionId;
   }

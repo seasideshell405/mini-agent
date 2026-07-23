@@ -41,12 +41,62 @@ export class Logger {
       fs.mkdirSync(config.logDir, { recursive: true });
     }
 
-    // 创建第一个日志文件
-    this.currentFilePath = this.generateFilePath();
-    this.currentFileSize = 0;
+    // 先看看有没有旧的日志文件还没写满，有的话接着用
+    const existing = this.findExistingLogFile();
+    if (existing) {
+      // 有现成的文件，接着它后面写
+      this.currentFilePath = existing.path;
+      this.currentFileSize = existing.size;
+      this.hasWritten = true; // 文件已经有内容了，后面切割时要检查大小
+    } else {
+      // 没有合适的旧文件，创建新的
+      this.currentFilePath = this.generateFilePath();
+      this.currentFileSize = 0;
+    }
   }
 
   // ===================== 内部方法 =====================
+
+  /**
+   * 扫描 logs 目录，找最新的且还没写满的日志文件
+   *
+   * 文件名是时间戳格式，按字母排序就是按时间排序（因为 ISO 8601
+   * 从左到右是 年-月-日T时-分-秒，高位在前）。
+   * 所以取最后一个文件就是最新的。
+   *
+   * @returns 如果找到合适的文件，返回 {路径, 当前大小}；否则返回 null
+   */
+  private findExistingLogFile(): { path: string; size: number } | null {
+    let files: string[] = [];
+    try {
+      // 读 logs 目录，过滤出 .log 文件
+      files = fs.readdirSync(this.config.logDir)
+        .filter(f => f.endsWith(".log"))
+        .sort(); // 按文件名排序，最新的在最后
+    } catch {
+      // 目录不存在之类的错误，直接返回 null
+      return null;
+    }
+
+    if (files.length === 0) return null;
+
+    // 取最新的文件
+    const latest = files[files.length - 1];
+    const fullPath = path.join(this.config.logDir, latest);
+
+    try {
+      const stat = fs.statSync(fullPath);
+      // stat.size 是文件在磁盘上的真实字节数
+      if (stat.size < this.config.maxFileSize) {
+        // 还没写满，接着用
+        return { path: fullPath, size: stat.size };
+      }
+    } catch {
+      // 文件读不到就算了
+    }
+
+    return null;
+  }
 
   /**
    * 生成日志文件名，格式：2026-07-22T06-30-21Z.log
